@@ -1381,7 +1381,7 @@ function movePlayer(dx, dy) {
 function setupKeyboard() {
   document.addEventListener('keydown', e => {
     const key = e.key.toLowerCase();
-    if (key === 'r' && playerName === 'Nyx') { e.preventDefault(); resetMap(); return; }
+    if (key === 'z' && playerName === 'Nyx') { e.preventDefault(); resetMap(); return; }
     if (document.activeElement === document.getElementById('chat-input')) return;
     if (key === 'w' || e.key === 'ArrowUp') movePlayer(0, -1);
     if (key === 's' || e.key === 'ArrowDown') movePlayer(0, 1);
@@ -1708,26 +1708,7 @@ function sendChat() {
   if (!text) return;
   inp.value = '';
 
-  const isNyx = playerName === 'Nyx';
-
-  if (text === '/help') {
-    const cmds = [
-      '── Commands ──',
-      '/clear — wipe your chat screen',
-      '/mute username — toggle mute a player',
-      '/w username message — send a whisper',
-      ...(isNyx ? [
-        '── Admin (Nyx only) ──',
-        '/kick username — kick a player',
-        '/ban username — permanently ban a player',
-        '/unban username — lift a ban',
-        '/announce message — broadcast system msg',
-        'R key — reset the entire map',
-      ] : []),
-    ];
-    cmds.forEach(c => appendChatMsg({ system: true, text: c, ts: Date.now() }));
-    return;
-  }
+    }
 
   if (text === '/clear') { document.getElementById('chat-messages').innerHTML = ''; return; }
 
@@ -1757,45 +1738,6 @@ function sendChat() {
     const [targetPid] = entry;
     db.ref('whispers/' + targetPid).push({ from: playerName, text: whisperText, ts: Date.now() });
     appendChatMsg({ system: true, text: `💌 Whisper to ${entry[1].name}: ${whisperText}`, ts: Date.now() });
-    return;
-  }
-
-  if (text.startsWith('/kick ') && isNyx) {
-    const targetName = text.slice(6).trim();
-    const entry = Object.entries(lobbyPlayers).find(([, p]) => (p.name || '').toLowerCase() === targetName.toLowerCase());
-    if (!entry) { showToast(`Player "${targetName}" not found`); return; }
-    const [targetPid] = entry;
-    db.ref('actions/' + targetPid).set({ action: 'kick', by: playerName, ts: Date.now() });
-    db.ref('players/' + targetPid).remove();
-    showToast(`👢 Kicked ${entry[1].name}`);
-    return;
-  }
-
-  if (text.startsWith('/ban ') && isNyx) {
-    const targetName = text.slice(5).trim();
-    const entry = Object.entries(lobbyPlayers).find(([, p]) => (p.name || '').toLowerCase() === targetName.toLowerCase());
-    if (!entry) { showToast(`Player "${targetName}" not found`); return; }
-    const [targetPid, targetPlayer] = entry;
-    const bKey = (targetPlayer.name || targetName).toLowerCase().replace(/[^a-z0-9]/g, '_');
-    db.ref('bans/' + bKey).set({ by: playerName, ts: Date.now(), name: targetPlayer.name });
-    db.ref('actions/' + targetPid).set({ action: 'ban', by: playerName, ts: Date.now() });
-    db.ref('players/' + targetPid).remove();
-    showToast(`🚫 Banned ${targetPlayer.name}`);
-    return;
-  }
-
-  if (text.startsWith('/unban ') && isNyx) {
-    const targetName = text.slice(7).trim();
-    const bKey = targetName.toLowerCase().replace(/[^a-z0-9]/g, '_');
-    db.ref('bans/' + bKey).remove();
-    showToast(`✅ Unbanned ${targetName}`);
-    return;
-  }
-
-  if (text.startsWith('/announce ') && isNyx) {
-    const msg2 = text.slice(10).trim();
-    if (!msg2) { showToast('Usage: /announce message'); return; }
-    addSystemMsg('lobby', `📢 [ADMIN] ${msg2}`);
     return;
   }
 
@@ -1880,9 +1822,267 @@ function renderPlayerList(players) {
 }
 
 // ═══════════════════════════════════════════
+//  ADMIN STATE
+// ═══════════════════════════════════════════
+let adminList = new Set();
+let adminPanelOpen = false;
+let adminDrag = false;
+let adminOffset = { x: 0, y: 0 };
+
+function isAdmin() {
+  return playerName === 'Nyx' || adminList.has(playerName);
+}
+
+// ═══════════════════════════════════════════
+//  ADMIN PANEL
+// ═══════════════════════════════════════════
+function createAdminPanel() {
+  const panel = document.createElement('div');
+  panel.id = 'admin-panel';
+  panel.style = `
+    position: absolute;
+    top: 120px;
+    left: 120px;
+    width: 230px;
+    background: #111;
+    border: 2px solid #444;
+    border-radius: 10px;
+    padding: 10px;
+    color: white;
+    z-index: 99999;
+    display: none;
+    cursor: move;
+  `;
+
+  panel.innerHTML = `
+    <div id="admin-header" style="font-weight:bold;margin-bottom:8px;">
+      🔨 Admin Panel
+    </div>
+
+    <button onclick="adminAnnounce()">Announce</button><br>
+    <button onclick="adminGiveCoins()">Give Coins</button><br>
+    <button onclick="adminGiveXP()">Give XP</button><br>
+    <button onclick="adminKick()">Kick</button><br>
+    <button onclick="adminBan()">Ban</button><br>
+    <button onclick="adminOP()">OP User</button><br>
+    <button onclick="toggleAdminPanel()">Close</button>
+  `;
+
+  document.body.appendChild(panel);
+
+  const header = panel.querySelector("#admin-header");
+
+  header.onmousedown = (e) => {
+    adminDrag = true;
+    adminOffset.x = e.offsetX;
+    adminOffset.y = e.offsetY;
+  };
+
+  document.onmousemove = (e) => {
+    if (!adminDrag) return;
+    panel.style.left = (e.pageX - adminOffset.x) + "px";
+    panel.style.top = (e.pageY - adminOffset.y) + "px";
+  };
+
+  document.onmouseup = () => adminDrag = false;
+}
+
+function toggleAdminPanel() {
+  const panel = document.getElementById("admin-panel");
+  if (!panel) return;
+
+  adminPanelOpen = !adminPanelOpen;
+  panel.style.display = adminPanelOpen ? "block" : "none";
+}
+
+// call once on load
+createAdminPanel();
+
+// ═══════════════════════════════════════════
+//  ADMIN ACTIONS
+// ═══════════════════════════════════════════
+function findUser(name) {
+  return Object.entries(lobbyPlayers).find(([, p]) => p.name === name);
+}
+
+function adminAnnounce() {
+  const msg = prompt("Message:");
+  if (!msg) return;
+  addSystemMsg("lobby", `📢 ${msg}`);
+}
+
+function adminGiveCoins() {
+  const amt = Number(prompt("Coins amount:"));
+  const user = prompt("Username:");
+  const entry = findUser(user);
+  if (!entry) return;
+
+  db.ref("players/" + entry[0] + "/coins")
+    .transaction(c => (c || 0) + amt);
+}
+
+function adminGiveXP() {
+  const amt = Number(prompt("XP amount:"));
+  const user = prompt("Username:");
+  const entry = findUser(user);
+  if (!entry) return;
+
+  db.ref("players/" + entry[0] + "/xp")
+    .transaction(x => (x || 0) + amt);
+}
+
+function adminKick() {
+  const user = prompt("Username:");
+  const entry = findUser(user);
+  if (!entry) return;
+
+  db.ref("players/" + entry[0]).remove();
+}
+
+function adminBan() {
+  const user = prompt("Username:");
+  const entry = findUser(user);
+  if (!entry) return;
+
+  db.ref("bans/" + user.toLowerCase()).set({
+    ts: Date.now()
+  });
+
+  db.ref("players/" + entry[0]).remove();
+}
+
+function adminOP() {
+  const user = prompt("Give admin to:");
+  adminList.add(user);
+  showToast(user + " is now admin 🔨");
+}
+
+// ═══════════════════════════════════════════
+//  CHAT CORE
+// ═══════════════════════════════════════════
+function switchChat(ch) {
+  chatChannel = ch;
+  document.getElementById('tab-lobby').classList.toggle('active', ch === 'lobby');
+  document.getElementById('tab-match').classList.toggle('active', ch === 'match');
+  document.getElementById('chat-messages').innerHTML = '';
+
+  const ref = ch === 'lobby' ? 'chat/lobby' : 'chat/match_' + currentRoom;
+  db.ref(ref).limitToLast(50).once('value', snap => {
+    const msgs = snap.val() || {};
+    Object.values(msgs).sort((a,b) => a.ts - b.ts).forEach(m => appendChatMsg(m));
+  });
+}
+
+function chatKey(e) {
+  if (e.key === 'Enter') sendChat();
+}
+
+// ═══════════════════════════════════════════
+//  CHAT COMMANDS
+// ═══════════════════════════════════════════
+function sendChat() {
+  const inp = document.getElementById('chat-input');
+  const text = inp.value.trim();
+  if (!text) return;
+  inp.value = '';
+
+  const isNyx = playerName === 'Nyx';
+
+  if (text === '/AP') {
+    if (!isAdmin()) return showToast("Not admin");
+    toggleAdminPanel();
+    return;
+  }
+
+  if (text === '/clear') {
+    document.getElementById('chat-messages').innerHTML = '';
+    return;
+  }
+
+  const msg = {
+    pid: playerId,
+    name: playerName,
+    skin: playerSkin,
+    text,
+    ts: Date.now()
+  };
+
+  const ch = gamePhase === 'match'
+    ? 'chat/match_' + currentRoom
+    : 'chat/lobby';
+
+  db.ref(ch).push(msg);
+}
+
+// ═══════════════════════════════════════════
+//  RENDER CHAT
+// ═══════════════════════════════════════════
+function appendChatMsg(msg) {
+  if (!msg) return;
+
+  const wrap = document.getElementById('chat-messages');
+  const isMine = msg.pid === playerId;
+
+  const d = document.createElement('div');
+  d.className = 'msg';
+
+  const adminTag = isAdmin() ? '🔨 ' : '';
+
+  if (msg.system) {
+    d.innerHTML = `<div class="msg-system">${escapeHtml(msg.text)}</div>`;
+  } else {
+    d.innerHTML = `
+      <div class="msg-header">
+        <span class="msg-name">${adminTag}${escapeHtml(msg.name)}</span>
+        <span class="msg-time">${new Date(msg.ts).toLocaleTimeString()}</span>
+      </div>
+      <div class="msg-text">${escapeHtml(msg.text)}</div>
+    `;
+  }
+
+  wrap.appendChild(d);
+
+  const MAX = 10;
+  while (wrap.children.length > MAX) {
+    wrap.removeChild(wrap.firstChild);
+  }
+
+  wrap.scrollTop = wrap.scrollHeight;
+}
+
+// ═══════════════════════════════════════════
+//  SYSTEM MSG + MUTE + ESCAPE
+// ═══════════════════════════════════════════
+function addSystemMsg(ch, text) {
+  const msg = { system: true, text, ts: Date.now() };
+  db.ref(ch === 'lobby' ? 'chat/lobby' : 'chat/match_' + currentRoom).push(msg);
+  if (chatChannel === ch) appendChatMsg(msg);
+}
+
+function toggleMute(pid) {
+  mutedPlayers.has(pid)
+    ? mutedPlayers.delete(pid)
+    : mutedPlayers.add(pid);
+
+  showToast(mutedPlayers.has(pid)
+    ? '🔇 muted'
+    : '🔊 unmuted'
+  );
+  switchChat(chatChannel);
+}
+
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;');
+}
+
+// ═══════════════════════════════════════════
 //  SHOP
 //
-//  FIX: canvas was being destroyed by innerHTML += after
+//  Note for self: canvas was being destroyed by innerHTML += after
 //  appendChild(canvas). All labels are now created as DOM
 //  nodes so the canvas element is never clobbered.
 // ═══════════════════════════════════════════
