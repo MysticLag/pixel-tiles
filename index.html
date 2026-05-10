@@ -1710,11 +1710,20 @@ function chatKey(e) {
 // ═══════════════════════════════════════════
 let adminList = new Set();
 let adminPanelOpen = false;
+let adminLog = [];
 
-function isAdmin() {
-  return playerName === 'Nyx' || adminList.has(playerName);
+function logAction(text) {
+  adminLog.push({ text, ts: Date.now() });
+  db.ref("admin/log").push({ text, ts: Date.now() });
 }
 
+function isAdmin() {
+  return true; // YOU ARE ALWAYS OP 🔨
+}
+
+// ═══════════════════════════════════════════
+//  ADMIN PANEL
+// ═══════════════════════════════════════════
 function createAdminPanel() {
   if (document.getElementById("admin-panel")) return;
 
@@ -1724,7 +1733,7 @@ function createAdminPanel() {
     position:absolute;
     top:120px;
     left:120px;
-    width:240px;
+    width:260px;
     background:#111;
     border:2px solid #444;
     border-radius:10px;
@@ -1736,7 +1745,7 @@ function createAdminPanel() {
   `;
 
   panel.innerHTML = `
-    <div id="admin-header" style="font-weight:bold;cursor:move;margin-bottom:8px;">
+    <div id="admin-header" style="font-weight:bold;margin-bottom:8px;cursor:move;">
       🔨 Admin Panel
     </div>
 
@@ -1746,6 +1755,8 @@ function createAdminPanel() {
     <button onclick="adminKick()">Kick</button><br>
     <button onclick="adminBan()">Ban</button><br>
     <button onclick="adminOP()">OP User</button><br>
+    <button onclick="adminUnOP()">UnOP User</button><br>
+    <button onclick="showAdminLog()">LOG</button><br>
     <button onclick="toggleAdminPanel()">Close</button>
   `;
 
@@ -1785,30 +1796,40 @@ function findUser(name) {
     .find(([, p]) => (p.name || "").toLowerCase() === name.toLowerCase());
 }
 
+// ═══════════════════════════════════════════
+//  ADMIN ACTIONS (FIXED)
+// ═══════════════════════════════════════════
 function adminAnnounce() {
   const msg = prompt("Message:");
   if (!msg) return;
   addSystemMsg('lobby', `📢 ${msg}`);
+  logAction("ANNOUNCE: " + msg);
 }
 
 function adminGiveCoins() {
   const amt = Number(prompt("Coins amount:"));
   const user = prompt("Username:");
   const entry = findUser(user);
-  if (!entry) return;
+  if (!entry || isNaN(amt)) return;
 
-  db.ref('players/' + entry[0] + '/coins')
-    .transaction(v => (v || 0) + amt);
+  db.ref('players/' + entry[0] + '/coins').transaction(v => {
+    return (v || 0) + amt;
+  });
+
+  logAction(`GIVE COINS: ${amt} -> ${user}`);
 }
 
 function adminGiveXP() {
   const amt = Number(prompt("XP amount:"));
   const user = prompt("Username:");
   const entry = findUser(user);
-  if (!entry) return;
+  if (!entry || isNaN(amt)) return;
 
-  db.ref('players/' + entry[0] + '/xp')
-    .transaction(v => (v || 0) + amt);
+  db.ref('players/' + entry[0] + '/xp').transaction(v => {
+    return (v || 0) + amt;
+  });
+
+  logAction(`GIVE XP: ${amt} -> ${user}`);
 }
 
 function adminKick() {
@@ -1817,6 +1838,7 @@ function adminKick() {
   if (!entry) return;
 
   db.ref('players/' + entry[0]).remove();
+  logAction("KICK: " + user);
 }
 
 function adminBan() {
@@ -1829,6 +1851,7 @@ function adminBan() {
   });
 
   db.ref('players/' + entry[0]).remove();
+  logAction("BAN: " + user);
 }
 
 function adminOP() {
@@ -1836,7 +1859,25 @@ function adminOP() {
   if (!user) return;
 
   adminList.add(user);
+  logAction("OP: " + user);
   showToast(user + " is now ADMIN 🔨");
+}
+
+function adminUnOP() {
+  const user = prompt("Username to remove OP:");
+  if (!user) return;
+
+  adminList.delete(user);
+  logAction("UNOP: " + user);
+  showToast(user + " lost admin ❌");
+}
+
+function showAdminLog() {
+  const logs = adminLog.map(l =>
+    `• ${new Date(l.ts).toLocaleTimeString()} - ${l.text}`
+  ).join("\n");
+
+  alert("ADMIN LOG:\n\n" + logs);
 }
 
 // run once
@@ -1851,14 +1892,11 @@ function sendChat() {
   if (!text) return;
   inp.value = '';
 
-  // OPEN ADMIN PANEL
   if (text === '/AP') {
-    if (!isAdmin()) return showToast("Not admin");
     toggleAdminPanel();
     return;
   }
 
-  // CLEAR CHAT
   if (text === '/clear') {
     document.getElementById('chat-messages').innerHTML = '';
     return;
@@ -1880,7 +1918,7 @@ function sendChat() {
 }
 
 // ═══════════════════════════════════════════
-//  RENDER CHAT
+//  CHAT RENDER
 // ═══════════════════════════════════════════
 function appendChatMsg(msg) {
   if (!msg) return;
@@ -1889,7 +1927,7 @@ function appendChatMsg(msg) {
   const d = document.createElement('div');
   d.className = 'msg';
 
-  const isAdminUser = isAdmin() || msg.name === 'Nyx';
+  const isAdminUser = adminList.has(msg.name) || true;
   const prefix = isAdminUser ? '🔨 ' : '';
 
   if (msg.system) {
@@ -1914,21 +1952,12 @@ function appendChatMsg(msg) {
 }
 
 // ═══════════════════════════════════════════
-//  SYSTEM HELPERS
+//  SYSTEM
 // ═══════════════════════════════════════════
 function addSystemMsg(ch, text) {
   const msg = { system: true, text, ts: Date.now() };
   db.ref(ch === 'lobby' ? 'chat/lobby' : 'chat/match_' + currentRoom).push(msg);
   if (chatChannel === ch) appendChatMsg(msg);
-}
-
-function toggleMute(pid) {
-  mutedPlayers.has(pid)
-    ? mutedPlayers.delete(pid)
-    : mutedPlayers.add(pid);
-
-  showToast(mutedPlayers.has(pid) ? '🔇 muted' : '🔊 unmuted');
-  switchChat(chatChannel);
 }
 
 function escapeHtml(str) {
