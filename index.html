@@ -336,10 +336,10 @@
     opacity: 0.3;
     pointer-events: none;
   }
-  .cell.zone-label-classic::after { content: 'CLASSIC'; color: #0ff; }
-  .cell.zone-label-chaos::after { content: 'CHAOS'; color: #f44; }
-  .cell.zone-label-shop::after { content: 'SHOP'; color: #ff0'; }
-  .cell.zone-label-survival::after { content: 'SURVIVAL'; color: #a0f'; }
+  .cell.zone-label-classic::after  { content: 'CLASSIC';  color: #0ff; }
+  .cell.zone-label-chaos::after    { content: 'CHAOS';    color: #f44; }
+  .cell.zone-label-shop::after     { content: 'SHOP';     color: #ff0; }
+  .cell.zone-label-survival::after { content: 'SURVIVAL'; color: #a0f; }
 
   /* player on cell */
   .cell .player-sprite {
@@ -762,7 +762,7 @@
       <label>Username</label>
       <input id="username-input" type="text" maxlength="16" placeholder="Enter your name..." onkeydown="if(event.key==='Enter')handleLoginBtn()" />
     </div>
-    <div id="pw-section" style="display:none;display:none">
+    <div id="pw-section" style="display:none">
       <div class="field-group">
         <label id="pw-label">Password</label>
         <input id="pw-input" type="password" maxlength="64" placeholder="Enter password..." onkeydown="if(event.key==='Enter')handleLoginBtn()" />
@@ -901,7 +901,7 @@
 <div id="toast"></div>
 
 <!-- JOYSTICK -->
-<div id="joystick-zone" id="joystick-zone">
+<div id="joystick-zone">
   <div id="joystick-stick"></div>
 </div>
 
@@ -948,7 +948,6 @@ function skinBg(id) {
   return s ? s.bg : '#222';
 }
 
-// Draw skin preview on canvas
 function drawSkinCanvas(canvas, skinId) {
   const ctx = canvas.getContext('2d');
   const s = SKINS.find(x => x.id === skinId) || SKINS[0];
@@ -967,7 +966,6 @@ function drawSkinCanvas(canvas, skinId) {
     ctx.fillStyle = s.color;
   }
   ctx.fillRect(0, 0, canvas.width, canvas.height);
-  // shine
   ctx.fillStyle = 'rgba(255,255,255,0.18)';
   ctx.fillRect(0, 0, canvas.width, canvas.height / 2);
 }
@@ -994,15 +992,15 @@ let playerName = '';
 let playerSkin = 'red';
 let playerData = { xp: 0, coins: 0, wins: 0, level: 1, ownedSkins: ['red','blue','green'] };
 let pos = { x: 15, y: 15 };
-let gamePhase = 'lobby'; // lobby | countdown | match | matchend
+let gamePhase = 'lobby';
 let currentMode = 'classic';
-let matchPlayers = {};   // players in current match
-let matchTiles = {};     // who owns which tile
+let matchPlayers = {};
+let matchTiles = {};
 let matchTimer = null;
 let myVote = null;
 let chatChannel = 'lobby';
 let mutedPlayers = new Set();
-let lobbyPlayers = {}; // pid → player data, kept in sync for /mute lookups
+let lobbyPlayers = {};
 let survivalRadius = 14;
 let survivalCenter = { x: 15, y: 15 };
 let chaosTeleportInterval = null;
@@ -1020,7 +1018,6 @@ function initGrid() {
   const side = Math.min(wrap.clientWidth, wrap.clientHeight) - 4;
   gridEl.style.width = side + 'px';
   gridEl.style.height = side + 'px';
-
   gridEl.innerHTML = '';
   cells.length = 0;
   for (let i = 0; i < GRID_SIZE * GRID_SIZE; i++) {
@@ -1031,7 +1028,6 @@ function initGrid() {
   }
 }
 
-// Zone definitions
 function zoneAt(x, y) {
   if (x <= 8 && y <= 8) return 'classic';
   if (x >= 21 && y <= 8) return 'chaos';
@@ -1051,13 +1047,11 @@ function renderGrid(allPlayers) {
     c.className = 'cell';
     if (zone) c.classList.add('zone-' + zone);
 
-    // zone labels (center-ish cells)
-    if (zone === 'classic' && x === 4 && y === 4) c.classList.add('zone-label-classic');
-    if (zone === 'chaos' && x === 25 && y === 4) c.classList.add('zone-label-chaos');
-    if (zone === 'survival' && x === 4 && y === 25) c.classList.add('zone-label-survival');
-    if (zone === 'shop' && x === 25 && y === 25) c.classList.add('zone-label-shop');
+    if (zone === 'classic'  && x === 4  && y === 4)  c.classList.add('zone-label-classic');
+    if (zone === 'chaos'    && x === 25 && y === 4)  c.classList.add('zone-label-chaos');
+    if (zone === 'survival' && x === 4  && y === 25) c.classList.add('zone-label-survival');
+    if (zone === 'shop'     && x === 25 && y === 25) c.classList.add('zone-label-shop');
 
-    // captured tile color during match
     if (isMatch && matchTiles[i]) {
       const ownerId = matchTiles[i];
       const ownerSkin = allPlayers[ownerId]?.skin || 'red';
@@ -1067,22 +1061,17 @@ function renderGrid(allPlayers) {
       c.style.background = '';
     }
 
-    // survival danger zone
     if (isMatch && currentMode === 'survival') {
       const dist = Math.sqrt((x - survivalCenter.x) ** 2 + (y - survivalCenter.y) ** 2);
       if (dist > survivalRadius) c.classList.add('danger');
     }
 
-    // clear old sprites
     c.innerHTML = '';
   });
 
-  // render players
   for (const id in allPlayers) {
     const p = allPlayers[id];
     if (!p || p.x === undefined) continue;
-
-    // in match mode, only show match players
     if (isMatch && !matchPlayers[id]) continue;
 
     const idx = p.y * GRID_SIZE + p.x;
@@ -1090,43 +1079,27 @@ function renderGrid(allPlayers) {
 
     const sprite = document.createElement('div');
     sprite.className = 'player-sprite' + (id === playerId ? ' me-sprite' : '');
-
     const col = skinColor(p.skin || 'red');
-    if (col.startsWith('linear')) {
-      sprite.style.background = col;
-    } else {
-      sprite.style.background = col;
-      sprite.style.color = col;
-    }
+    sprite.style.background = col.startsWith('linear') ? col : col;
+    sprite.style.color = col;
     sprite.style.opacity = '0.95';
-
     const pip = document.createElement('div');
     pip.className = 'pip';
     sprite.appendChild(pip);
-
     cells[idx].appendChild(sprite);
   }
 }
 
-// Immediately paint the local player without waiting for Firebase
 function renderSelf() {
   if (!playerId || !cells.length) return;
-  // Remove any existing local sprite
-  cells.forEach(c => {
-    const old = c.querySelector('.me-sprite');
-    if (old) old.remove();
-  });
+  cells.forEach(c => { const old = c.querySelector('.me-sprite'); if (old) old.remove(); });
   const idx = pos.y * GRID_SIZE + pos.x;
   if (!cells[idx]) return;
   const sprite = document.createElement('div');
   sprite.className = 'player-sprite me-sprite';
   const col = skinColor(playerSkin);
-  if (col.startsWith('linear')) {
-    sprite.style.background = col;
-  } else {
-    sprite.style.background = col;
-    sprite.style.color = col;
-  }
+  sprite.style.background = col.startsWith('linear') ? col : col;
+  sprite.style.color = col;
   sprite.style.opacity = '0.95';
   const pip = document.createElement('div');
   pip.className = 'pip';
@@ -1140,7 +1113,6 @@ function renderSelf() {
 function buildLoginSkins() {
   const picker = document.getElementById('skin-picker');
   picker.innerHTML = '';
-  // Only show starter skins in login
   ['red','blue','green','yellow','purple'].forEach(sid => {
     const s = SKINS.find(x => x.id === sid);
     const canvas = document.createElement('canvas');
@@ -1157,7 +1129,7 @@ function buildLoginSkins() {
   });
 }
 
-let loginStep = 0; // 0 = enter name, 1 = enter/create password
+let loginStep = 0;
 let loginIsNewUser = false;
 
 function resetLoginStep() {
@@ -1181,18 +1153,14 @@ async function handleLoginBtn() {
   if (loginStep === 0) {
     const name = document.getElementById('username-input').value.trim();
     if (!name || name.length < 2) { showToast('Enter a username (min 2 chars)'); return; }
-
     btn.textContent = 'Checking...';
     btn.disabled = true;
-
     try {
       const nameKey = name.toLowerCase().replace(/[^a-z0-9]/g, '_');
       const snap = await db.ref('users/' + nameKey).once('value');
       const existing = snap.val();
-
       document.getElementById('pw-section').style.display = '';
       document.getElementById('username-input').disabled = true;
-
       if (existing) {
         loginIsNewUser = false;
         document.getElementById('pw-label').textContent = 'Password';
@@ -1206,7 +1174,6 @@ async function handleLoginBtn() {
         document.getElementById('pw-confirm-wrap').style.display = '';
         btn.textContent = '▶ CREATE ACCOUNT';
       }
-
       document.getElementById('pw-input').focus();
       loginStep = 1;
       btn.disabled = false;
@@ -1218,18 +1185,14 @@ async function handleLoginBtn() {
     return;
   }
 
-  // Step 2: verify or create password
   const name = document.getElementById('username-input').value.trim();
   const pw = document.getElementById('pw-input').value;
   if (!pw) { showToast('Enter your password'); return; }
-
   btn.textContent = 'Verifying...';
   btn.disabled = true;
-
   try {
     const hash = await hashPassword(pw);
     const nameKey = name.toLowerCase().replace(/[^a-z0-9]/g, '_');
-
     if (loginIsNewUser) {
       const pw2 = document.getElementById('pw-confirm-input').value;
       if (pw !== pw2) { showToast('Passwords do not match!'); btn.textContent = '▶ CREATE ACCOUNT'; btn.disabled = false; return; }
@@ -1245,17 +1208,13 @@ async function handleLoginBtn() {
         return;
       }
     }
-
-    // Check ban before entering
-    const nameKey2 = name.toLowerCase().replace(/[^a-z0-9]/g, '_');
-    const banSnap = await db.ref('bans/' + nameKey2).once('value');
+    const banSnap = await db.ref('bans/' + nameKey).once('value');
     if (banSnap.val()) {
       showToast('🚫 You are banned from this server!');
       btn.textContent = loginIsNewUser ? '▶ CREATE ACCOUNT' : '▶ LOGIN';
       btn.disabled = false;
       return;
     }
-
     enterGame(name);
   } catch(e) {
     showToast('Error. Try again.');
@@ -1291,10 +1250,14 @@ function enterGame(name) {
 
 // ═══════════════════════════════════════════
 //  GAME SETUP
+//
+//  FIX: players are now written to root-level `players/`
+//  instead of `rooms/lobby/players/` — this matches the
+//  same permission level where chat/lobby already works.
 // ═══════════════════════════════════════════
 function setupGame() {
-  // Join lobby
-  const ref = db.ref('rooms/lobby/players/' + playerId);
+  // ── Write self into the shared lobby ──
+  const ref = db.ref('players/' + playerId);
   ref.set({
     name: playerName,
     skin: playerSkin,
@@ -1305,12 +1268,10 @@ function setupGame() {
     coins: playerData.coins,
     level: playerData.level
   });
-
-  // Remove on disconnect
   ref.onDisconnect().remove();
 
-  // Listen to players
-  db.ref('rooms/lobby/players').on('value', snap => {
+  // ── Listen to ALL lobby players ──
+  db.ref('players').on('value', snap => {
     const players = snap.val() || {};
     lobbyPlayers = players;
     if (gamePhase === 'lobby' || gamePhase === 'countdown') {
@@ -1357,12 +1318,10 @@ function setupGame() {
     snap.ref.remove();
   });
 
-  // Listen for map reset signal from Nyx (ignore stale signals older than 5s)
-  db.ref('rooms/lobby/reset').on('value', snap => {
+  // Listen for map reset signal
+  db.ref('lobby/reset').on('value', snap => {
     const data = snap.val();
     if (!data || (Date.now() - data.ts) > 5000) return;
-    // resetMap() already batch-updated Firebase positions for everyone,
-    // so just update local state and re-render
     pos.x = 15; pos.y = 15;
     matchTiles = {};
     renderSelf();
@@ -1386,7 +1345,6 @@ function movePlayer(dx, dy) {
   const newX = Math.max(0, Math.min(GRID_SIZE - 1, pos.x + dx));
   const newY = Math.max(0, Math.min(GRID_SIZE - 1, pos.y + dy));
 
-  // In survival: can't move to danger zone
   if (gamePhase === 'match' && currentMode === 'survival') {
     const dist = Math.sqrt((newX - survivalCenter.x) ** 2 + (newY - survivalCenter.y) ** 2);
     if (dist > survivalRadius) { showToast('⚠ Danger zone!'); return; }
@@ -1394,22 +1352,22 @@ function movePlayer(dx, dy) {
 
   pos.x = newX; pos.y = newY;
 
-  const roomRef = gamePhase === 'match' ? 'rooms/match_' + currentRoom : 'rooms/lobby';
-  db.ref(roomRef + '/players/' + playerId + '/x').set(pos.x);
-  db.ref(roomRef + '/players/' + playerId + '/y').set(pos.y);
-
-  // capture tile in match
   if (gamePhase === 'match') {
+    // Update only x,y — do not overwrite other player fields
+    db.ref('rooms/match_' + currentRoom + '/players/' + playerId + '/x').set(pos.x);
+    db.ref('rooms/match_' + currentRoom + '/players/' + playerId + '/y').set(pos.y);
+
     const idx = pos.y * GRID_SIZE + pos.x;
     matchTiles[idx] = playerId;
     db.ref('rooms/match_' + currentRoom + '/tiles/' + idx).set(playerId);
-
-    // XP for capture
     playerData.xp += 1;
     updateXPBar();
+  } else {
+    // Lobby: update only x,y — do not overwrite name/skin/stats
+    db.ref('players/' + playerId + '/x').set(pos.x);
+    db.ref('players/' + playerId + '/y').set(pos.y);
   }
 
-  // chaos teleport buff
   if (gamePhase === 'match' && currentMode === 'chaos' && Math.random() < 0.05) {
     pos.x = Math.floor(Math.random() * GRID_SIZE);
     pos.y = Math.floor(Math.random() * GRID_SIZE);
@@ -1423,7 +1381,6 @@ function movePlayer(dx, dy) {
 function setupKeyboard() {
   document.addEventListener('keydown', e => {
     const key = e.key.toLowerCase();
-    // R always works for Nyx regardless of chat focus
     if (key === 'r' && playerName === 'Nyx') { e.preventDefault(); resetMap(); return; }
     if (document.activeElement === document.getElementById('chat-input')) return;
     if (key === 'w' || e.key === 'ArrowUp') movePlayer(0, -1);
@@ -1434,31 +1391,28 @@ function setupKeyboard() {
 }
 
 function resetMap() {
-  const roomRef = gamePhase === 'match' ? 'rooms/match_' + currentRoom : 'rooms/lobby';
-
-  // Clear all tiles in Firebase
-  db.ref(roomRef + '/tiles').remove();
-
-  // Teleport ALL players to center by batch-updating Firebase
-  db.ref(roomRef + '/players').once('value', snap => {
-    const allPlayers = snap.val() || {};
-    const updates = {};
-    Object.keys(allPlayers).forEach(id => {
-      updates[id + '/x'] = 15;
-      updates[id + '/y'] = 15;
+  const roomRef = gamePhase === 'match' ? 'rooms/match_' + currentRoom : 'players';
+  if (gamePhase === 'match') {
+    db.ref('rooms/match_' + currentRoom + '/tiles').remove();
+    db.ref('rooms/match_' + currentRoom + '/players').once('value', snap => {
+      const all = snap.val() || {};
+      const updates = {};
+      Object.keys(all).forEach(id => { updates[id + '/x'] = 15; updates[id + '/y'] = 15; });
+      db.ref('rooms/match_' + currentRoom + '/players').update(updates);
     });
-    db.ref(roomRef + '/players').update(updates);
-  });
-
-  // Reset local state immediately
+  } else {
+    db.ref('players').once('value', snap => {
+      const all = snap.val() || {};
+      const updates = {};
+      Object.keys(all).forEach(id => { updates[id + '/x'] = 15; updates[id + '/y'] = 15; });
+      db.ref('players').update(updates);
+    });
+  }
   pos.x = 15; pos.y = 15;
   matchTiles = {};
   renderSelf();
-
-  // Signal all other clients to also reset their local state
-  db.ref('rooms/lobby/reset').set({ ts: Date.now(), by: playerName });
-  setTimeout(() => db.ref('rooms/lobby/reset').remove(), 3000);
-
+  db.ref('lobby/reset').set({ ts: Date.now(), by: playerName });
+  setTimeout(() => db.ref('lobby/reset').remove(), 3000);
   showToast('🔄 Map reset!');
 }
 
@@ -1508,12 +1462,10 @@ function setupJoystick() {
 function updateZoneLabel() {
   const z = zoneAt(pos.x, pos.y) || 'lobby';
   document.getElementById('zone-label').textContent = z.toUpperCase();
-
-  if (z === 'shop') buildShop(); // refresh shop context
+  if (z === 'shop') buildShop();
 }
 
 let countdownActive = false;
-let zoneTimers = {};
 
 function checkZoneTrigger(players) {
   if (gamePhase !== 'lobby' || countdownActive) return;
@@ -1541,7 +1493,7 @@ function startCountdown(mode, playerIds) {
   const pInZone = playerIds;
 
   document.getElementById('match-status').textContent = `${mode.toUpperCase()} match detected! Starting...`;
-  db.ref('rooms/lobby/countdown').set({ mode, players: pInZone.reduce((a, id) => { a[id] = true; return a; }, {}), ts: Date.now() });
+  db.ref('lobby/countdown').set({ mode, players: pInZone.reduce((a, id) => { a[id] = true; return a; }, {}), ts: Date.now() });
 
   let t = 10;
   const overlay = document.getElementById('countdown-overlay');
@@ -1579,7 +1531,6 @@ function enterMatch(mode, playerIds) {
   document.getElementById('match-status').textContent = `${mode.toUpperCase()} MATCH IN PROGRESS`;
   document.getElementById('zone-label').textContent = mode.toUpperCase();
 
-  // Reset positions for match
   pos.x = Math.floor(GRID_SIZE / 2) + (Math.random() < 0.5 ? -4 : 4);
   pos.y = Math.floor(GRID_SIZE / 2) + (Math.random() < 0.5 ? -4 : 4);
 
@@ -1590,7 +1541,6 @@ function enterMatch(mode, playerIds) {
   });
   matchRef.child('players/' + playerId).onDisconnect().remove();
 
-  // Listen to match state
   matchRef.child('players').on('value', snap => {
     const players = snap.val() || {};
     if (gamePhase === 'match') renderGrid({ ...players });
@@ -1601,7 +1551,6 @@ function enterMatch(mode, playerIds) {
     matchTiles = snap.val() || {};
   });
 
-  // Listen match chat
   db.ref('chat/match_' + currentRoom).limitToLast(50).on('child_added', snap => {
     const msg = snap.val();
     if (msg && chatChannel === 'match') appendChatMsg(msg);
@@ -1609,11 +1558,9 @@ function enterMatch(mode, playerIds) {
   addSystemMsg('lobby', `⚔️ Match started: ${mode.toUpperCase()}`);
   addSystemMsg('match', `⚔️ ${mode.toUpperCase()} match started! Capture tiles!`);
 
-  // Mode effects
   if (mode === 'chaos') startChaosEffects();
   if (mode === 'survival') startSurvivalShrink();
 
-  // Match timer (90 seconds)
   let timeLeft = 90;
   matchTimer = setInterval(() => {
     timeLeft--;
@@ -1642,7 +1589,6 @@ function startSurvivalShrink() {
     survivalRadius -= 1;
     if (survivalRadius < 3) survivalRadius = 3;
     showToast('⚠ Zone shrinking!');
-    // kill player if outside
     const dist = Math.sqrt((pos.x - survivalCenter.x) ** 2 + (pos.y - survivalCenter.y) ** 2);
     if (dist > survivalRadius) {
       showToast('💀 You died! Zone killed you.');
@@ -1657,7 +1603,6 @@ function endMatch() {
   if (chaosTeleportInterval) clearInterval(chaosTeleportInterval);
   gamePhase = 'matchend';
 
-  // Count tiles
   const counts = {};
   for (const idx in matchTiles) {
     const owner = matchTiles[idx];
@@ -1677,23 +1622,16 @@ function endMatch() {
   savePlayerData();
   updatePlayerHUD();
 
-  const overlay = document.getElementById('match-end-overlay');
   const title = document.getElementById('match-end-title');
   const sub = document.getElementById('match-end-sub');
   const xpEl = document.getElementById('match-end-xp');
 
-  if (won) {
-    title.textContent = '🏆 VICTORY!';
-    title.className = 'win';
-  } else {
-    title.textContent = 'DEFEAT';
-    title.className = 'lose';
-  }
+  if (won) { title.textContent = '🏆 VICTORY!'; title.className = 'win'; }
+  else      { title.textContent = 'DEFEAT';      title.className = 'lose'; }
   sub.textContent = `Tiles captured: ${myTiles}`;
   xpEl.textContent = `+${xpGain} XP  +${coinGain} 🪙`;
-  overlay.classList.add('active');
+  document.getElementById('match-end-overlay').classList.add('active');
 
-  // Cleanup match data after 5s
   setTimeout(() => {
     db.ref('rooms/match_' + currentRoom + '/players/' + playerId).remove();
   }, 3000);
@@ -1707,7 +1645,8 @@ function returnToLobby() {
   matchPlayers = {};
   pos = { x: 15, y: 15 };
 
-  db.ref('rooms/lobby/players/' + playerId).set({
+  // Re-write full player entry back into shared lobby
+  db.ref('players/' + playerId).set({
     name: playerName, skin: playerSkin,
     x: pos.x, y: pos.y,
     xp: playerData.xp, wins: playerData.wins,
@@ -1721,21 +1660,17 @@ function returnToLobby() {
 //  VOTING
 // ═══════════════════════════════════════════
 function toggleVote() {
-  const el = document.getElementById('vote-ui');
-  el.classList.toggle('active');
+  document.getElementById('vote-ui').classList.toggle('active');
 }
 
 function castVote(mode) {
   if (myVote) {
-    // remove old vote
     db.ref('votes/lobby/' + myVote).transaction(v => Math.max(0, (v || 0) - 1));
   }
   myVote = mode;
   db.ref('votes/lobby/' + mode).transaction(v => (v || 0) + 1);
-
   ['classic','chaos','survival'].forEach(m => {
-    const btn = document.getElementById('vbtn-' + m);
-    btn.classList.toggle('voted', m === mode);
+    document.getElementById('vbtn-' + m).classList.toggle('voted', m === mode);
   });
 }
 
@@ -1756,7 +1691,6 @@ function switchChat(ch) {
   document.getElementById('tab-lobby').classList.toggle('active', ch === 'lobby');
   document.getElementById('tab-match').classList.toggle('active', ch === 'match');
   document.getElementById('chat-messages').innerHTML = '';
-  // Reload messages for this channel
   const ref = ch === 'lobby' ? 'chat/lobby' : 'chat/match_' + currentRoom;
   db.ref(ref).limitToLast(50).once('value', snap => {
     const msgs = snap.val() || {};
@@ -1774,7 +1708,6 @@ function sendChat() {
   if (!text) return;
   inp.value = '';
 
-  // ── Commands ──────────────────────────────
   const isNyx = playerName === 'Nyx';
 
   if (text === '/help') {
@@ -1796,10 +1729,7 @@ function sendChat() {
     return;
   }
 
-  if (text === '/clear') {
-    document.getElementById('chat-messages').innerHTML = '';
-    return;
-  }
+  if (text === '/clear') { document.getElementById('chat-messages').innerHTML = ''; return; }
 
   if (text.startsWith('/mute ')) {
     const targetName = text.slice(6).trim();
@@ -1836,7 +1766,7 @@ function sendChat() {
     if (!entry) { showToast(`Player "${targetName}" not found`); return; }
     const [targetPid] = entry;
     db.ref('actions/' + targetPid).set({ action: 'kick', by: playerName, ts: Date.now() });
-    db.ref('rooms/lobby/players/' + targetPid).remove();
+    db.ref('players/' + targetPid).remove();
     showToast(`👢 Kicked ${entry[1].name}`);
     return;
   }
@@ -1849,7 +1779,7 @@ function sendChat() {
     const bKey = (targetPlayer.name || targetName).toLowerCase().replace(/[^a-z0-9]/g, '_');
     db.ref('bans/' + bKey).set({ by: playerName, ts: Date.now(), name: targetPlayer.name });
     db.ref('actions/' + targetPid).set({ action: 'ban', by: playerName, ts: Date.now() });
-    db.ref('rooms/lobby/players/' + targetPid).remove();
+    db.ref('players/' + targetPid).remove();
     showToast(`🚫 Banned ${targetPlayer.name}`);
     return;
   }
@@ -1869,13 +1799,7 @@ function sendChat() {
     return;
   }
 
-  const msg = {
-    pid: playerId,
-    name: playerName,
-    skin: playerSkin,
-    text,
-    ts: Date.now()
-  };
+  const msg = { pid: playerId, name: playerName, skin: playerSkin, text, ts: Date.now() };
   const ch = gamePhase === 'match' ? 'chat/match_' + currentRoom : 'chat/lobby';
   db.ref(ch).push(msg);
 }
@@ -1907,12 +1831,10 @@ function appendChatMsg(msg) {
     wrap.appendChild(d);
   }
 
-  // Keep max 10 messages — remove oldest if over limit
   const MAX_CHAT_MSGS = 10;
   while (wrap.children.length > MAX_CHAT_MSGS) {
     wrap.removeChild(wrap.firstChild);
   }
-
   wrap.scrollTop = wrap.scrollHeight;
 }
 
@@ -1927,7 +1849,7 @@ function toggleMute(pid) {
   if (mutedPlayers.has(pid)) mutedPlayers.delete(pid);
   else mutedPlayers.add(pid);
   showToast(mutedPlayers.has(pid) ? '🔇 Player muted' : '🔊 Player unmuted');
-  switchChat(chatChannel); // refresh
+  switchChat(chatChannel);
 }
 
 function escapeHtml(str) {
@@ -1959,32 +1881,52 @@ function renderPlayerList(players) {
 
 // ═══════════════════════════════════════════
 //  SHOP
+//
+//  FIX: canvas was being destroyed by innerHTML += after
+//  appendChild(canvas). All labels are now created as DOM
+//  nodes so the canvas element is never clobbered.
 // ═══════════════════════════════════════════
 function buildShopInto(grid, swatchSize) {
   grid.innerHTML = '';
   SKINS.forEach(s => {
-    const owned = playerData.ownedSkins.includes(s.id);
+    const owned   = playerData.ownedSkins.includes(s.id);
     const equipped = playerData.equippedSkin === s.id;
-    const canBuy = playerData.coins >= s.cost && playerData.level >= s.level;
-    const locked = !owned && !canBuy;
+    const canBuy  = playerData.coins >= s.cost && playerData.level >= s.level;
+    const locked  = !owned && !canBuy;
 
     const div = document.createElement('div');
     div.className = 'shop-item' + (owned ? ' owned' : '') + (equipped ? ' equipped' : '') + (locked ? ' locked' : '');
 
+    // Canvas created as a proper DOM node — never touched by innerHTML
     const canvas = document.createElement('canvas');
     canvas.className = 'shop-swatch';
     canvas.width = swatchSize; canvas.height = swatchSize;
     drawSkinCanvas(canvas, s.id);
-
     div.appendChild(canvas);
-    div.innerHTML += `<div class="shop-name">${s.name}</div>`;
 
+    // Name
+    const nameEl = document.createElement('div');
+    nameEl.className = 'shop-name';
+    nameEl.textContent = s.name;
+    div.appendChild(nameEl);
+
+    // Status
     if (equipped) {
-      div.innerHTML += `<div class="shop-badge">ON</div>`;
+      const badge = document.createElement('div');
+      badge.className = 'shop-badge';
+      badge.textContent = 'ON';
+      div.appendChild(badge);
     } else if (owned) {
-      div.innerHTML += `<div class="shop-price" style="color:var(--green)">Equip</div>`;
+      const pr = document.createElement('div');
+      pr.className = 'shop-price';
+      pr.style.color = 'var(--green)';
+      pr.textContent = 'Equip';
+      div.appendChild(pr);
     } else {
-      div.innerHTML += `<div class="shop-price">${s.cost}🪙 Lv${s.level}</div>`;
+      const pr = document.createElement('div');
+      pr.className = 'shop-price';
+      pr.textContent = `${s.cost}🪙 Lv${s.level}`;
+      div.appendChild(pr);
     }
 
     div.addEventListener('click', () => {
@@ -1999,7 +1941,8 @@ function buildShopInto(grid, swatchSize) {
       playerSkin = s.id;
       playerData.equippedSkin = s.id;
       savePlayerData();
-      db.ref('rooms/lobby/players/' + playerId + '/skin').set(playerSkin);
+      // Update only skin field, not full player object
+      db.ref('players/' + playerId + '/skin').set(playerSkin);
       updatePlayerHUD();
       buildShop();
       showToast(`Equipped: ${s.name}`);
@@ -2066,7 +2009,6 @@ function loadRooms() {
     const rooms = snap.val() || {};
     wrap.innerHTML = '';
 
-    // Default lobby
     const lobbyEntry = document.createElement('div');
     lobbyEntry.className = 'room-entry';
     lobbyEntry.innerHTML = `
@@ -2142,7 +2084,7 @@ function checkLevelUp() {
     playerData.level += 1;
     showToast(`🎉 Level up! You are now Level ${playerData.level}!`);
     addSystemMsg('lobby', `⬆️ ${playerName} reached Level ${playerData.level}!`);
-    buildShop(); // refresh shop availability
+    buildShop();
   }
 }
 
@@ -2158,18 +2100,15 @@ function updatePlayerHUD() {
   document.getElementById('player-coins').textContent = `🪙 ${playerData.coins} coins`;
   document.getElementById('player-wins').textContent = `🏆 ${playerData.wins} wins`;
   updateXPBar();
-
-  const av = document.getElementById('player-avatar');
-  drawSkinCanvas(av, playerSkin);
+  drawSkinCanvas(document.getElementById('player-avatar'), playerSkin);
 }
 
 function savePlayerData() {
   playerData.equippedSkin = playerSkin;
   localStorage.setItem('ptiles_' + playerName, JSON.stringify(playerData));
-
-  // Also sync to firebase
   if (playerId) {
-    db.ref('rooms/lobby/players/' + playerId).update({
+    // Update only stats/skin — preserve x,y already in Firebase
+    db.ref('players/' + playerId).update({
       xp: playerData.xp,
       wins: playerData.wins,
       coins: playerData.coins,
@@ -2192,12 +2131,10 @@ function showToast(msg) {
 }
 
 // ═══════════════════════════════════════════
-//  INIT LOGIN UI
+//  INIT
 // ═══════════════════════════════════════════
 document.addEventListener('DOMContentLoaded', () => {
   buildLoginSkins();
-
-  // Resize handler
   window.addEventListener('resize', () => {
     if (gamePhase !== 'lobby' && gamePhase !== 'match') return;
     if (cells.length) initGrid();
