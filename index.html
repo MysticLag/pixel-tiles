@@ -1691,10 +1691,13 @@ function switchChat(ch) {
   document.getElementById('tab-lobby').classList.toggle('active', ch === 'lobby');
   document.getElementById('tab-match').classList.toggle('active', ch === 'match');
   document.getElementById('chat-messages').innerHTML = '';
+
   const ref = ch === 'lobby' ? 'chat/lobby' : 'chat/match_' + currentRoom;
   db.ref(ref).limitToLast(50).once('value', snap => {
     const msgs = snap.val() || {};
-    Object.values(msgs).sort((a,b) => a.ts - b.ts).forEach(m => appendChatMsg(m));
+    Object.values(msgs)
+      .sort((a, b) => a.ts - b.ts)
+      .forEach(m => appendChatMsg(m));
   });
 }
 
@@ -1702,160 +1705,38 @@ function chatKey(e) {
   if (e.key === 'Enter') sendChat();
 }
 
-function sendChat() {
-  const inp = document.getElementById('chat-input');
-  const text = inp.value.trim();
-  if (!text) return;
-  inp.value = '';
-
-    }
-
-  if (text === '/clear') { document.getElementById('chat-messages').innerHTML = ''; return; }
-
-  if (text.startsWith('/mute ')) {
-    const targetName = text.slice(6).trim();
-    if (!targetName) { showToast('Usage: /mute username'); return; }
-    const entry = Object.entries(lobbyPlayers).find(([, p]) => (p.name || '').toLowerCase() === targetName.toLowerCase());
-    if (!entry) { showToast(`Player "${targetName}" not found`); return; }
-    const [targetPid] = entry;
-    if (targetPid === playerId) { showToast("You can't mute yourself"); return; }
-    const wasMuted = mutedPlayers.has(targetPid);
-    if (wasMuted) mutedPlayers.delete(targetPid); else mutedPlayers.add(targetPid);
-    showToast(wasMuted ? `🔊 Unmuted ${targetName}` : `🔇 Muted ${targetName}`);
-    switchChat(chatChannel);
-    return;
-  }
-
-  if (text.startsWith('/w ')) {
-    const rest = text.slice(3).trim();
-    const spaceIdx = rest.indexOf(' ');
-    if (spaceIdx === -1) { showToast('Usage: /w username message'); return; }
-    const targetName = rest.slice(0, spaceIdx);
-    const whisperText = rest.slice(spaceIdx + 1).trim();
-    if (!whisperText) { showToast('Usage: /w username message'); return; }
-    const entry = Object.entries(lobbyPlayers).find(([, p]) => (p.name || '').toLowerCase() === targetName.toLowerCase());
-    if (!entry) { showToast(`Player "${targetName}" not found`); return; }
-    const [targetPid] = entry;
-    db.ref('whispers/' + targetPid).push({ from: playerName, text: whisperText, ts: Date.now() });
-    appendChatMsg({ system: true, text: `💌 Whisper to ${entry[1].name}: ${whisperText}`, ts: Date.now() });
-    return;
-  }
-
-  const msg = { pid: playerId, name: playerName, skin: playerSkin, text, ts: Date.now() };
-  const ch = gamePhase === 'match' ? 'chat/match_' + currentRoom : 'chat/lobby';
-  db.ref(ch).push(msg);
-}
-
-function appendChatMsg(msg) {
-  if (!msg) return;
-  const wrap = document.getElementById('chat-messages');
-  const isMuted = mutedPlayers.has(msg.pid);
-  const isMine = msg.pid === playerId;
-
-  if (msg.system) {
-    const d = document.createElement('div');
-    d.className = 'msg';
-    d.innerHTML = `<div class="msg-system">${escapeHtml(msg.text)}</div>`;
-    wrap.appendChild(d);
-  } else {
-    const d = document.createElement('div');
-    d.className = 'msg' + (isMuted ? ' msg-muted' : '');
-    const col = skinColor(msg.skin || 'red');
-    const time = new Date(msg.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    d.innerHTML = `
-      <div class="msg-header">
-        <span class="msg-name" style="color:${col.startsWith('linear') ? '#ff88ff' : col}">${escapeHtml(nameDisplay(msg.name))}</span>
-        <span class="msg-time">${time}</span>
-        ${!isMine ? `<button class="msg-mute-btn" onclick="toggleMute('${msg.pid}')">🔇</button>` : ''}
-      </div>
-      <div class="msg-text">${escapeHtml(msg.text)}</div>
-    `;
-    wrap.appendChild(d);
-  }
-
-  const MAX_CHAT_MSGS = 10;
-  while (wrap.children.length > MAX_CHAT_MSGS) {
-    wrap.removeChild(wrap.firstChild);
-  }
-  wrap.scrollTop = wrap.scrollHeight;
-}
-
-function addSystemMsg(ch, text) {
-  const msg = { system: true, text, ts: Date.now() };
-  const key = ch === 'lobby' ? 'chat/lobby' : 'chat/match_' + currentRoom;
-  db.ref(key).push(msg);
-  if (chatChannel === ch) appendChatMsg(msg);
-}
-
-function toggleMute(pid) {
-  if (mutedPlayers.has(pid)) mutedPlayers.delete(pid);
-  else mutedPlayers.add(pid);
-  showToast(mutedPlayers.has(pid) ? '🔇 Player muted' : '🔊 Player unmuted');
-  switchChat(chatChannel);
-}
-
-function escapeHtml(str) {
-  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-}
-
 // ═══════════════════════════════════════════
-//  PLAYER LIST
-// ═══════════════════════════════════════════
-function renderPlayerList(players) {
-  const el = document.getElementById('players-list');
-  el.innerHTML = '';
-  let count = 0;
-  for (const id in players) {
-    if (count >= 100) break;
-    const p = players[id];
-    const col = skinColor(p.skin || 'red');
-    const d = document.createElement('div');
-    d.className = 'player-entry' + (id === playerId ? ' me' : '');
-    d.innerHTML = `
-      <div class="player-dot" style="background:${col.startsWith('linear') ? '#ff88ff' : col}"></div>
-      <span class="player-entry-name">${escapeHtml(nameDisplay(p.name || id))}</span>
-      <span style="font-size:10px;color:var(--text-dim)">Lv${p.level||1}</span>
-    `;
-    el.appendChild(d);
-    count++;
-  }
-}
-
-// ═══════════════════════════════════════════
-//  ADMIN STATE
+//  ADMIN SYSTEM
 // ═══════════════════════════════════════════
 let adminList = new Set();
 let adminPanelOpen = false;
-let adminDrag = false;
-let adminOffset = { x: 0, y: 0 };
 
 function isAdmin() {
   return playerName === 'Nyx' || adminList.has(playerName);
 }
 
-// ═══════════════════════════════════════════
-//  ADMIN PANEL
-// ═══════════════════════════════════════════
 function createAdminPanel() {
-  const panel = document.createElement('div');
-  panel.id = 'admin-panel';
+  if (document.getElementById("admin-panel")) return;
+
+  const panel = document.createElement("div");
+  panel.id = "admin-panel";
   panel.style = `
-    position: absolute;
-    top: 120px;
-    left: 120px;
-    width: 230px;
-    background: #111;
-    border: 2px solid #444;
-    border-radius: 10px;
-    padding: 10px;
-    color: white;
-    z-index: 99999;
-    display: none;
-    cursor: move;
+    position:absolute;
+    top:120px;
+    left:120px;
+    width:240px;
+    background:#111;
+    border:2px solid #444;
+    border-radius:10px;
+    padding:10px;
+    color:white;
+    z-index:99999;
+    display:none;
+    cursor:move;
   `;
 
   panel.innerHTML = `
-    <div id="admin-header" style="font-weight:bold;margin-bottom:8px;">
+    <div id="admin-header" style="font-weight:bold;cursor:move;margin-bottom:8px;">
       🔨 Admin Panel
     </div>
 
@@ -1870,21 +1751,25 @@ function createAdminPanel() {
 
   document.body.appendChild(panel);
 
+  let drag = false;
+  let offsetX = 0;
+  let offsetY = 0;
+
   const header = panel.querySelector("#admin-header");
 
   header.onmousedown = (e) => {
-    adminDrag = true;
-    adminOffset.x = e.offsetX;
-    adminOffset.y = e.offsetY;
+    drag = true;
+    offsetX = e.offsetX;
+    offsetY = e.offsetY;
   };
 
   document.onmousemove = (e) => {
-    if (!adminDrag) return;
-    panel.style.left = (e.pageX - adminOffset.x) + "px";
-    panel.style.top = (e.pageY - adminOffset.y) + "px";
+    if (!drag) return;
+    panel.style.left = (e.pageX - offsetX) + "px";
+    panel.style.top = (e.pageY - offsetY) + "px";
   };
 
-  document.onmouseup = () => adminDrag = false;
+  document.onmouseup = () => drag = false;
 }
 
 function toggleAdminPanel() {
@@ -1895,20 +1780,15 @@ function toggleAdminPanel() {
   panel.style.display = adminPanelOpen ? "block" : "none";
 }
 
-// call once on load
-createAdminPanel();
-
-// ═══════════════════════════════════════════
-//  ADMIN ACTIONS
-// ═══════════════════════════════════════════
 function findUser(name) {
-  return Object.entries(lobbyPlayers).find(([, p]) => p.name === name);
+  return Object.entries(lobbyPlayers)
+    .find(([, p]) => (p.name || "").toLowerCase() === name.toLowerCase());
 }
 
 function adminAnnounce() {
   const msg = prompt("Message:");
   if (!msg) return;
-  addSystemMsg("lobby", `📢 ${msg}`);
+  addSystemMsg('lobby', `📢 ${msg}`);
 }
 
 function adminGiveCoins() {
@@ -1917,8 +1797,8 @@ function adminGiveCoins() {
   const entry = findUser(user);
   if (!entry) return;
 
-  db.ref("players/" + entry[0] + "/coins")
-    .transaction(c => (c || 0) + amt);
+  db.ref('players/' + entry[0] + '/coins')
+    .transaction(v => (v || 0) + amt);
 }
 
 function adminGiveXP() {
@@ -1927,8 +1807,8 @@ function adminGiveXP() {
   const entry = findUser(user);
   if (!entry) return;
 
-  db.ref("players/" + entry[0] + "/xp")
-    .transaction(x => (x || 0) + amt);
+  db.ref('players/' + entry[0] + '/xp')
+    .transaction(v => (v || 0) + amt);
 }
 
 function adminKick() {
@@ -1936,7 +1816,7 @@ function adminKick() {
   const entry = findUser(user);
   if (!entry) return;
 
-  db.ref("players/" + entry[0]).remove();
+  db.ref('players/' + entry[0]).remove();
 }
 
 function adminBan() {
@@ -1944,41 +1824,26 @@ function adminBan() {
   const entry = findUser(user);
   if (!entry) return;
 
-  db.ref("bans/" + user.toLowerCase()).set({
+  db.ref('bans/' + user.toLowerCase()).set({
     ts: Date.now()
   });
 
-  db.ref("players/" + entry[0]).remove();
+  db.ref('players/' + entry[0]).remove();
 }
 
 function adminOP() {
-  const user = prompt("Give admin to:");
+  const user = prompt("Username to OP:");
+  if (!user) return;
+
   adminList.add(user);
-  showToast(user + " is now admin 🔨");
+  showToast(user + " is now ADMIN 🔨");
 }
 
-// ═══════════════════════════════════════════
-//  CHAT CORE
-// ═══════════════════════════════════════════
-function switchChat(ch) {
-  chatChannel = ch;
-  document.getElementById('tab-lobby').classList.toggle('active', ch === 'lobby');
-  document.getElementById('tab-match').classList.toggle('active', ch === 'match');
-  document.getElementById('chat-messages').innerHTML = '';
-
-  const ref = ch === 'lobby' ? 'chat/lobby' : 'chat/match_' + currentRoom;
-  db.ref(ref).limitToLast(50).once('value', snap => {
-    const msgs = snap.val() || {};
-    Object.values(msgs).sort((a,b) => a.ts - b.ts).forEach(m => appendChatMsg(m));
-  });
-}
-
-function chatKey(e) {
-  if (e.key === 'Enter') sendChat();
-}
+// run once
+createAdminPanel();
 
 // ═══════════════════════════════════════════
-//  CHAT COMMANDS
+//  CHAT INPUT
 // ═══════════════════════════════════════════
 function sendChat() {
   const inp = document.getElementById('chat-input');
@@ -1986,14 +1851,14 @@ function sendChat() {
   if (!text) return;
   inp.value = '';
 
-  const isNyx = playerName === 'Nyx';
-
+  // OPEN ADMIN PANEL
   if (text === '/AP') {
     if (!isAdmin()) return showToast("Not admin");
     toggleAdminPanel();
     return;
   }
 
+  // CLEAR CHAT
   if (text === '/clear') {
     document.getElementById('chat-messages').innerHTML = '';
     return;
@@ -2021,19 +1886,18 @@ function appendChatMsg(msg) {
   if (!msg) return;
 
   const wrap = document.getElementById('chat-messages');
-  const isMine = msg.pid === playerId;
-
   const d = document.createElement('div');
   d.className = 'msg';
 
-  const adminTag = isAdmin() ? '🔨 ' : '';
+  const isAdminUser = isAdmin() || msg.name === 'Nyx';
+  const prefix = isAdminUser ? '🔨 ' : '';
 
   if (msg.system) {
     d.innerHTML = `<div class="msg-system">${escapeHtml(msg.text)}</div>`;
   } else {
     d.innerHTML = `
       <div class="msg-header">
-        <span class="msg-name">${adminTag}${escapeHtml(msg.name)}</span>
+        <span class="msg-name">${prefix}${escapeHtml(msg.name)}</span>
         <span class="msg-time">${new Date(msg.ts).toLocaleTimeString()}</span>
       </div>
       <div class="msg-text">${escapeHtml(msg.text)}</div>
@@ -2042,8 +1906,7 @@ function appendChatMsg(msg) {
 
   wrap.appendChild(d);
 
-  const MAX = 10;
-  while (wrap.children.length > MAX) {
+  while (wrap.children.length > 10) {
     wrap.removeChild(wrap.firstChild);
   }
 
@@ -2051,7 +1914,7 @@ function appendChatMsg(msg) {
 }
 
 // ═══════════════════════════════════════════
-//  SYSTEM MSG + MUTE + ESCAPE
+//  SYSTEM HELPERS
 // ═══════════════════════════════════════════
 function addSystemMsg(ch, text) {
   const msg = { system: true, text, ts: Date.now() };
@@ -2064,10 +1927,7 @@ function toggleMute(pid) {
     ? mutedPlayers.delete(pid)
     : mutedPlayers.add(pid);
 
-  showToast(mutedPlayers.has(pid)
-    ? '🔇 muted'
-    : '🔊 unmuted'
-  );
+  showToast(mutedPlayers.has(pid) ? '🔇 muted' : '🔊 unmuted');
   switchChat(chatChannel);
 }
 
