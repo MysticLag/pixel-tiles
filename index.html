@@ -1712,13 +1712,25 @@ let adminList = new Set();
 let adminPanelOpen = false;
 let adminLog = [];
 
-function logAction(text) {
-  adminLog.push({ text, ts: Date.now() });
-  db.ref("admin/log").push({ text, ts: Date.now() });
+function cleanName(name) {
+  return (name || "")
+    .replace(/🔨/g, "")
+    .trim()
+    .toLowerCase();
 }
 
 function isAdmin() {
-  return true; // YOU ARE ALWAYS OP 🔨
+  return cleanName(playerName) === 'nyx' || adminList.has(cleanName(playerName));
+}
+
+function logAction(actor, text) {
+  const entry = {
+    actor,
+    text,
+    ts: Date.now()
+  };
+  adminLog.push(entry);
+  db.ref("admin/log").push(entry);
 }
 
 // ═══════════════════════════════════════════
@@ -1792,18 +1804,20 @@ function toggleAdminPanel() {
 }
 
 function findUser(name) {
+  const target = cleanName(name);
   return Object.entries(lobbyPlayers)
-    .find(([, p]) => (p.name || "").toLowerCase() === name.toLowerCase());
+    .find(([, p]) => cleanName(p.name) === target);
 }
 
 // ═══════════════════════════════════════════
-//  ADMIN ACTIONS (FIXED)
+//  ADMIN ACTIONS (FIXED + LOGGING + CLEAN MATCH)
 // ═══════════════════════════════════════════
 function adminAnnounce() {
   const msg = prompt("Message:");
   if (!msg) return;
+
   addSystemMsg('lobby', `📢 ${msg}`);
-  logAction("ANNOUNCE: " + msg);
+  logAction(cleanName(playerName), `ANNOUNCE: ${msg}`);
 }
 
 function adminGiveCoins() {
@@ -1812,11 +1826,12 @@ function adminGiveCoins() {
   const entry = findUser(user);
   if (!entry || isNaN(amt)) return;
 
-  db.ref('players/' + entry[0] + '/coins').transaction(v => {
-    return (v || 0) + amt;
-  });
+  const targetName = entry[1].name;
 
-  logAction(`GIVE COINS: ${amt} -> ${user}`);
+  db.ref('players/' + entry[0] + '/coins')
+    .transaction(v => (v || 0) + amt);
+
+  logAction(cleanName(playerName), `GIVE COINS ${amt} -> ${targetName}`);
 }
 
 function adminGiveXP() {
@@ -1825,11 +1840,12 @@ function adminGiveXP() {
   const entry = findUser(user);
   if (!entry || isNaN(amt)) return;
 
-  db.ref('players/' + entry[0] + '/xp').transaction(v => {
-    return (v || 0) + amt;
-  });
+  const targetName = entry[1].name;
 
-  logAction(`GIVE XP: ${amt} -> ${user}`);
+  db.ref('players/' + entry[0] + '/xp')
+    .transaction(v => (v || 0) + amt);
+
+  logAction(cleanName(playerName), `GIVE XP ${amt} -> ${targetName}`);
 }
 
 function adminKick() {
@@ -1838,7 +1854,7 @@ function adminKick() {
   if (!entry) return;
 
   db.ref('players/' + entry[0]).remove();
-  logAction("KICK: " + user);
+  logAction(cleanName(playerName), `KICK -> ${entry[1].name}`);
 }
 
 function adminBan() {
@@ -1846,38 +1862,55 @@ function adminBan() {
   const entry = findUser(user);
   if (!entry) return;
 
-  db.ref('bans/' + user.toLowerCase()).set({
+  db.ref('bans/' + cleanName(user)).set({
     ts: Date.now()
   });
 
   db.ref('players/' + entry[0]).remove();
-  logAction("BAN: " + user);
+  logAction(cleanName(playerName), `BAN -> ${entry[1].name}`);
 }
 
 function adminOP() {
-  const user = prompt("Username to OP:");
+  const user = prompt("Username:");
   if (!user) return;
 
-  adminList.add(user);
-  logAction("OP: " + user);
+  const n = cleanName(user);
+  adminList.add(n);
+
+  logAction(cleanName(playerName), `OP -> ${n}`);
   showToast(user + " is now ADMIN 🔨");
 }
 
 function adminUnOP() {
-  const user = prompt("Username to remove OP:");
+  const user = prompt("Username:");
   if (!user) return;
 
-  adminList.delete(user);
-  logAction("UNOP: " + user);
-  showToast(user + " lost admin ❌");
+  const n = cleanName(user);
+  adminList.delete(n);
+
+  logAction(cleanName(playerName), `UNOP -> ${n}`);
+  showToast(user + " removed from admin ❌");
 }
 
 function showAdminLog() {
-  const logs = adminLog.map(l =>
-    `• ${new Date(l.ts).toLocaleTimeString()} - ${l.text}`
-  ).join("\n");
+  const logs = adminLog
+    .slice()
+    .reverse()
+    .map(l => `• [${new Date(l.ts).toLocaleTimeString()}] ${l.actor}: ${l.text}`)
+    .join("\n");
 
   alert("ADMIN LOG:\n\n" + logs);
+}
+
+// secret command 👀
+function surpriseCommand() {
+  const entry = findUser(playerName);
+  if (!entry) return;
+
+  db.ref('players/' + entry[0] + '/xp')
+    .transaction(v => (v || 0) + 250);
+
+  logAction(cleanName(playerName), "SURPRISE USED");
 }
 
 // run once
@@ -1893,12 +1926,18 @@ function sendChat() {
   inp.value = '';
 
   if (text === '/AP') {
+    if (!isAdmin()) return showToast("Not admin");
     toggleAdminPanel();
     return;
   }
 
   if (text === '/clear') {
     document.getElementById('chat-messages').innerHTML = '';
+    return;
+  }
+
+  if (text === '/surprise') {
+    surpriseCommand();
     return;
   }
 
@@ -1927,7 +1966,8 @@ function appendChatMsg(msg) {
   const d = document.createElement('div');
   d.className = 'msg';
 
-  const isAdminUser = adminList.has(msg.name) || true;
+  const cleanMsgName = cleanName(msg.name);
+  const isAdminUser = adminList.has(cleanMsgName) || cleanMsgName === 'nyx';
   const prefix = isAdminUser ? '🔨 ' : '';
 
   if (msg.system) {
